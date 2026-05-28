@@ -1,28 +1,78 @@
 import { parseDuration, parseIngredient } from './utils'
 import type { RecipeFormData } from '@/components/RecipeForm'
 
-/**
- * Fetches a recipe URL via a CORS proxy, parses JSON-LD structured data,
- * and returns a RecipeFormData object ready for saving.
- * Runs entirely client-side — no server required.
- */
-export async function importRecipeFromUrl(url: string): Promise<RecipeFormData> {
-  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
-  let html: string
+// ── Proxy chain ───────────────────────────────────────────────────────────
+// Tries each proxy in order; returns the first one that delivers usable HTML.
 
-  try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) })
-    if (!res.ok) throw new Error(`Proxy returned ${res.status}`)
-    const json = await res.json()
-    html = json.contents
-    if (!html) throw new Error('No content returned')
-    if (json.status?.http_code >= 400) throw new Error(`Site returned ${json.status.http_code}`)
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    throw new Error(`Could not fetch URL: ${msg}`)
+function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer))
+}
+
+interface Proxy {
+  name: string
+  fetch: (encoded: string) => Promise<string>
+}
+
+const PROXIES: Proxy[] = [
+  {
+    name: 'corsproxy.io',
+    fetch: async (encoded) => {
+      const res = await fetchWithTimeout(`https://corsproxy.io/?${encoded}`, 12000)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.text()
+    },
+  },
+  {
+    name: 'allorigins.win',
+    fetch: async (encoded) => {
+      const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${encoded}`, 12000)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      if (!json.contents) throw new Error('empty response')
+      return json.contents as string
+    },
+  },
+  {
+    name: 'codetabs.com',
+    fetch: async (encoded) => {
+      const res = await fetchWithTimeout(`https://api.codetabs.com/v1/proxy?quest=${encoded}`, 12000)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.text()
+    },
+  },
+]
+
+export async function importRecipeFromUrl(url: string): Promise<RecipeFormData> {
+  const encoded = encodeURIComponent(url)
+  const errors: string[] = []
+
+  for (const proxy of PROXIES) {
+    try {
+      const html = await proxy.fetch(encoded)
+      if (!html || html.length < 200) throw new Error('response too short')
+      return importRecipeFromHtml(html, url)
+    } catch (e: unknown) {
+      errors.push(`${proxy.name}: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
 
-  // Parse JSON-LD using the browser's DOMParser — no cheerio needed
+  throw new ProxyError(
+    `All proxies failed for this site:\n• ${errors.join('\n• ')}\n\nSome sites (AllRecipes, Food Network) block CORS proxies. Use the "Paste HTML" tab instead.`,
+    errors
+  )
+}
+
+export class ProxyError extends Error {
+  constructor(message: string, public readonly proxyErrors: string[]) {
+    super(message)
+  }
+}
+
+// ── HTML → RecipeFormData ─────────────────────────────────────────────────
+
+export function importRecipeFromHtml(html: string, sourceUrl = ''): RecipeFormData {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const scripts = Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))
 
@@ -45,11 +95,10 @@ export async function importRecipeFromUrl(url: string): Promise<RecipeFormData> 
   }
 
   if (!recipeData) {
-    throw new Error('No recipe data found at this URL. The site may not support structured data.')
+    throw new Error('No recipe structured data found in this page. The site may not use JSON-LD markup.')
   }
 
   const r = recipeData
-
   const name = String(r.name || '')
   const description = String(r.description || '')
 
@@ -62,7 +111,9 @@ export async function importRecipeFromUrl(url: string): Promise<RecipeFormData> 
   const prep_time = parseDuration(r.prepTime as string | undefined)
   const cook_time = parseDuration((r.cookTime ?? r.totalTime) as string | undefined)
   const servings = parseInt(
-    Array.isArray(r.recipeYield) ? String((r.recipeYield as unknown[])[0]) : String(r.recipeYield ?? '4')
+    Array.isArray(r.recipeYield)
+      ? String((r.recipeYield as unknown[])[0])
+      : String(r.recipeYield ?? '4')
   ) || 4
 
   const rawIngredients: string[] = Array.isArray(r.recipeIngredient) ? (r.recipeIngredient as string[]) : []
@@ -82,5 +133,5 @@ export async function importRecipeFromUrl(url: string): Promise<RecipeFormData> 
       .join('\n\n')
   }
 
-  return { name, description, image_url, prep_time, cook_time, servings, ingredients, instructions, source_url: url }
+  return { name, description, image_url, prep_time, cook_time, servings, ingredients, instructions, source_url: sourceUrl }
 }
