@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Recipe, MealPlanEntry, DAYS, MEAL_TYPES } from '@/lib/types'
+import { MealPlanEntry, DAYS, MEAL_TYPES } from '@/lib/types'
 import { getMondayOfWeek, formatDateKey, formatWeekRange } from '@/lib/utils'
+import { getRecipes, getMealPlanForWeek } from '@/lib/storage'
 
 export default function HomePage() {
   const [recipeCount, setRecipeCount] = useState<number | null>(null)
@@ -10,8 +11,8 @@ export default function HomePage() {
   const weekStart = formatDateKey(getMondayOfWeek(new Date()))
 
   useEffect(() => {
-    fetch('/api/recipes').then(r => r.json()).then((data: Recipe[]) => setRecipeCount(data.length))
-    fetch(`/api/meal-plan?week=${weekStart}`).then(r => r.json()).then(setMealPlan)
+    setRecipeCount(getRecipes().length)
+    setMealPlan(getMealPlanForWeek(weekStart))
   }, [weekStart])
 
   const getMeal = (day: number, meal: string) =>
@@ -26,32 +27,12 @@ export default function HomePage() {
         <p className="text-gray-500 mt-1">{formatWeekRange(getMondayOfWeek(new Date()))}</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard
-          label="Recipes"
-          value={recipeCount === null ? '...' : String(recipeCount)}
-          href="/recipes"
-          description="in your collection"
-          color="green"
-        />
-        <StatCard
-          label="Meals Planned"
-          value={`${plannedCount} / 21`}
-          href="/meal-plan"
-          description="this week"
-          color="blue"
-        />
-        <StatCard
-          label="Shopping List"
-          value={plannedCount > 0 ? 'Ready' : 'Empty'}
-          href="/shopping-list"
-          description="generate from meal plan"
-          color="amber"
-        />
+        <StatCard label="Recipes" value={recipeCount === null ? '...' : String(recipeCount)} href="/recipes" description="in your collection" color="green" />
+        <StatCard label="Meals Planned" value={`${plannedCount} / 21`} href="/meal-plan" description="this week" color="blue" />
+        <StatCard label="Shopping List" value={plannedCount > 0 ? 'Ready' : 'Empty'} href="/shopping-list" description="generate from meal plan" color="amber" />
       </div>
 
-      {/* This week's plan */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-900">This Week</h2>
@@ -63,9 +44,7 @@ export default function HomePage() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left py-3 px-4 font-medium text-gray-500 w-24">Meal</th>
-                  {DAYS.map(d => (
-                    <th key={d} className="text-left py-3 px-3 font-medium text-gray-500">{d.slice(0, 3)}</th>
-                  ))}
+                  {DAYS.map(d => <th key={d} className="text-left py-3 px-3 font-medium text-gray-500">{d.slice(0, 3)}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -76,11 +55,7 @@ export default function HomePage() {
                       const meal = getMeal(dayIdx, mealType)
                       return (
                         <td key={dayIdx} className="py-3 px-3">
-                          {meal ? (
-                            <span className="text-gray-800 font-medium line-clamp-1">{meal.recipe_name}</span>
-                          ) : (
-                            <span className="text-gray-300">-</span>
-                          )}
+                          {meal ? <span className="text-gray-800 font-medium line-clamp-1">{meal.recipe_name}</span> : <span className="text-gray-300">-</span>}
                         </td>
                       )
                     })}
@@ -92,7 +67,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Quick actions */}
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -105,14 +79,8 @@ export default function HomePage() {
   )
 }
 
-function StatCard({ label, value, href, description, color }: {
-  label: string; value: string; href: string; description: string; color: 'green' | 'blue' | 'amber'
-}) {
-  const colors = {
-    green: 'bg-green-50 text-green-700 border-green-200',
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
-  }
+function StatCard({ label, value, href, description, color }: { label: string; value: string; href: string; description: string; color: 'green' | 'blue' | 'amber' }) {
+  const colors = { green: 'bg-green-50 text-green-700 border-green-200', blue: 'bg-blue-50 text-blue-700 border-blue-200', amber: 'bg-amber-50 text-amber-700 border-amber-200' }
   return (
     <Link href={href} className={`block p-5 rounded-xl border ${colors[color]} hover:shadow-sm transition-shadow`}>
       <div className="text-3xl font-bold">{value}</div>

@@ -43,5 +43,8 @@ next-env.d.ts
 # local database
 /data/
 
+# static export output
+/out/
+
 # skill screenshots (generated, not source)
 .claude/skills/*/screenshots/

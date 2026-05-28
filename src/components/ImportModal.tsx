@@ -1,6 +1,8 @@
 'use client'
 import { useState } from 'react'
 import RecipeForm, { RecipeFormData } from './RecipeForm'
+import { importRecipeFromUrl } from '@/lib/importRecipe'
+import { createRecipe } from '@/lib/storage'
 
 interface Props {
   onImported: () => void
@@ -21,29 +23,18 @@ export default function ImportModal({ onImported, onClose }: Props) {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Import failed'); return }
+      const data = await importRecipeFromUrl(url.trim())
       setImportedData(data)
       setStep('review')
-    } catch {
-      setError('Network error — please try again')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Import failed — please try another URL')
     } finally {
       setLoading(false)
     }
   }
 
   const handleSave = async (data: RecipeFormData) => {
-    const res = await fetch('/api/recipes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-    if (!res.ok) throw new Error('Failed to save recipe')
+    createRecipe(data)
     onImported()
   }
 
@@ -81,6 +72,9 @@ export default function ImportModal({ onImported, onClose }: Props) {
                 </button>
               </div>
               {error && <p className="text-red-600 text-sm">{error}</p>}
+              <p className="text-xs text-gray-400">
+                Import uses a CORS proxy (allorigins.win). Works on most major recipe sites.
+              </p>
             </div>
           )}
 
