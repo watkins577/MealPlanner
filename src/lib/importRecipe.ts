@@ -72,6 +72,13 @@ export class ProxyError extends Error {
 
 // ── HTML → RecipeFormData ─────────────────────────────────────────────────
 
+// @type can be a plain string ("Recipe") or an array (["Recipe","NewsArticle"])
+function isRecipeType(t: unknown): boolean {
+  if (typeof t === 'string') return t === 'Recipe'
+  if (Array.isArray(t)) return (t as string[]).includes('Recipe')
+  return false
+}
+
 export function importRecipeFromHtml(html: string, sourceUrl = ''): RecipeFormData {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const scripts = Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))
@@ -83,10 +90,10 @@ export function importRecipeFromHtml(html: string, sourceUrl = ''): RecipeFormDa
       const candidates: unknown[] = Array.isArray(raw) ? raw : [raw]
       for (const item of candidates) {
         const obj = item as Record<string, unknown>
-        if (obj['@type'] === 'Recipe') { recipeData = obj; break }
+        if (isRecipeType(obj['@type'])) { recipeData = obj; break }
         const graph = obj['@graph']
         if (Array.isArray(graph)) {
-          const found = (graph as Record<string, unknown>[]).find(g => g['@type'] === 'Recipe')
+          const found = (graph as Record<string, unknown>[]).find(g => isRecipeType(g['@type']))
           if (found) { recipeData = found; break }
         }
       }
