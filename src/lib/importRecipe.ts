@@ -1,4 +1,4 @@
-import { parseDuration, parseIngredient } from './utils'
+import { parseDuration, parseIngredient, formatAmount } from './utils'
 import type { RecipeFormData } from '@/components/RecipeForm'
 
 // ── Proxy chain ───────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export function importRecipeFromHtml(html: string, sourceUrl = ''): RecipeFormDa
   const rawIngredients: string[] = Array.isArray(r.recipeIngredient) ? (r.recipeIngredient as string[]) : []
   const ingredients = rawIngredients.map(i => {
     const p = parseIngredient(i)
-    return { amount: p.amount ?? '', unit: p.unit ?? '', name: p.name }
+    return { amount: formatAmount(p.amount ?? ''), unit: p.unit ?? '', name: p.name }
   })
 
   const rawInstructions = r.recipeInstructions
